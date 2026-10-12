@@ -289,7 +289,7 @@ export class TypeResolver {
               dataType: 'union',
               types: indexTypes,
             };
-          } else if (indexInfos.length === 0 && objectLiteral.properties.length === 0 && mappedTypeNode.type !== undefined) {
+          } else if (indexInfos.length === 0 && objectLiteral.properties.length === 0 && mappedTypeNode.type !== undefined && !TypeResolver.mapsKeyIntoTemplate(mappedTypeNode)) {
             // fallback for mapped types like Record<string, V>
             const constraintNode = mappedTypeNode.typeParameter.constraint;
 
@@ -297,7 +297,7 @@ export class TypeResolver {
               let constraintType
               try {
                 constraintType = new TypeResolver(constraintNode, this.current, mappedTypeNode, this.context).resolve();
-              } catch (_error) {
+              } catch {
                 // Constraint could not be resolved (e.g. complex union types). Skip
                 return objectLiteral
               }
@@ -608,6 +608,12 @@ export class TypeResolver {
       return this.current.typeChecker.getTypeFromTypeNode(this.typeNode);
     }
     throw new GenerateMetadataError(`Can not succeeded to calculate referencer type.`, this.typeNode);
+  }
+
+  private static mapsKeyIntoTemplate(mappedTypeNode: ts.MappedTypeNode): boolean {
+    const keyName = mappedTypeNode.typeParameter.name.text;
+    const referencesKey = (node: ts.Node): boolean => (ts.isIdentifier(node) && node.text === keyName) || ts.forEachChild(node, referencesKey) === true;
+    return mappedTypeNode.type !== undefined && referencesKey(mappedTypeNode.type);
   }
 
   private static typeReferenceToEntityName(node: ts.TypeReferenceType): ts.EntityName {
