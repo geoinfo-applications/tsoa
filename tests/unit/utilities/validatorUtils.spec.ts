@@ -21,7 +21,7 @@ describe('Validator JSDoc utilities', () => {
   const validate = sourceFile.statements[1] as ts.FunctionDeclaration;
 
   it('preserves spaces in property regex literals', () => {
-    expect(getPropertyValidators(model.members[0]).pattern).to.deep.equal({
+    expect(getPropertyValidators(model.members[0])?.pattern).to.deep.equal({
       errorMsg: undefined,
       value: '^[a-zA-Z0-9 ]*$',
     });
