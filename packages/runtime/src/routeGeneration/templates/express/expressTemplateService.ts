@@ -5,7 +5,7 @@ import { FieldErrors } from '../../templateHelpers';
 import { TsoaRoute } from '../../tsoa-route';
 import { ValidateError } from '../../templateHelpers';
 import { TemplateService } from '../templateService';
-import { Readable, pipeline } from 'node:stream';
+import { Readable, finished } from 'node:stream';
 
 type ExpressApiHandlerParameters = {
   methodName: string;
@@ -27,6 +27,7 @@ type ExpressReturnHandlerParameters = {
   headers: any;
   statusCode?: number;
   data?: any;
+  next?: ExNext;
 };
 
 export class ExpressTemplateService extends TemplateService<ExpressApiHandlerParameters, ExpressValidationArgsParameters, ExpressReturnHandlerParameters> {
@@ -42,7 +43,7 @@ export class ExpressTemplateService extends TemplateService<ExpressApiHandlerPar
         statusCode = controller.getStatus() || statusCode;
       }
 
-      this.returnHandler({ response, headers, statusCode, data });
+      this.returnHandler({ response, headers, statusCode, data, next });
     } catch (error) {
       return next(error);
     }
@@ -116,7 +117,7 @@ export class ExpressTemplateService extends TemplateService<ExpressApiHandlerPar
   }
 
   protected returnHandler(params: ExpressReturnHandlerParameters) {
-    const { response, statusCode, data } = params;
+    const { response, statusCode, data, next } = params;
     let { headers } = params;
     headers = headers || {};
 
@@ -132,7 +133,7 @@ export class ExpressTemplateService extends TemplateService<ExpressApiHandlerPar
 
     if (data && typeof data.pipe === 'function' && data.readable && typeof data._read === 'function') {
       response.status(statusCode || 200);
-      pipeline(data as Readable, response, _ => {});
+      this.pipeStream(data as Readable, response, next);
     } else if (data !== undefined && (data !== null || isJsonResponse)) {
       // allow null response when it is a json response
       if (typeof data === 'number' || isJsonResponse) {
@@ -147,5 +148,19 @@ export class ExpressTemplateService extends TemplateService<ExpressApiHandlerPar
     } else {
       response.status(statusCode || 204).end();
     }
+  }
+
+  private pipeStream(stream: Readable, response: ExResponse, next?: ExNext) {
+    // stream.pipeline would destroy the response on a source error, leaving no chance to answer with an error status
+    stream.on('error', (error: Error) => {
+      stream.unpipe(response);
+      if (!response.headersSent && next) {
+        next(error);
+        return;
+      }
+      response.destroy();
+    });
+    finished(response, () => stream.destroy());
+    stream.pipe(response);
   }
 }

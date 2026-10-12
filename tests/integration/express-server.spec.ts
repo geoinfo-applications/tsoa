@@ -1,9 +1,12 @@
 import { File } from '@tsoa/runtime';
 import { expect } from 'chai';
 import { readFileSync } from 'fs';
+import { get as httpGet } from 'http';
+import { AddressInfo } from 'net';
 import 'mocha';
 import { resolve } from 'path';
 import { base64image } from '../fixtures/base64image';
+import { endlessStreamState } from '../fixtures/controllers/getController';
 import { stateOf } from '../fixtures/controllers/middlewaresExpressController';
 import { state } from '../fixtures/controllers/middlewaresHierarchyController';
 import { app } from '../fixtures/express/server';
@@ -291,11 +294,41 @@ describe('Express Server', () => {
     });
   });
 
-  it('abort response on stream error', async () => {
-    return verifyGetRequest(app, `${basePath}/GetTest/HandleStreamFailure`, (_err, res) => {
-      expect(_err).to.instanceOf(Error)
-      return;
-    }).catch(_ => {});
+  it('hands a stream error before any data to the error handler', () => {
+    return verifyGetRequest(
+      app,
+      `${basePath}/GetTest/HandleStreamFailure`,
+      (_err, res) => {
+        expect(res.body.message).to.equal('stream_test_error');
+      },
+      500,
+    );
+  });
+
+  it('aborts the connection on a stream error after data was sent', async () => {
+    const response = await getRawResponse(`${basePath}/GetTest/HandleStreamFailureMidTransfer`);
+
+    expect(response.statusCode).to.equal(200);
+    expect(response.body).to.equal('first chunk');
+    expect(response.complete).to.equal(false);
+  });
+
+  it('destroys the source stream when the client disconnects', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const server = app.listen(0, () => {
+        const { port } = server.address() as AddressInfo;
+        const request = httpGet({ port, path: `${basePath}/GetTest/HandleEndlessStream` }, response => {
+          response.once('data', () => request.destroy());
+        });
+        request.on('error', () => undefined);
+        request.on('close', () => {
+          setTimeout(() => {
+            server.close();
+            endlessStreamState.destroyed ? resolve() : reject(new Error('source stream was not destroyed'));
+          }, 100);
+        });
+      });
+    });
   });
 
   it('should reject invalid additionalProperties', () => {
@@ -1877,3 +1910,23 @@ describe('Express Server', () => {
     return model;
   }
 });
+
+type RawResponse = { statusCode?: number; body: string; complete: boolean };
+
+function getRawResponse(path: string) {
+  return new Promise<RawResponse>((resolve, reject) => {
+    const server = app.listen(0, () => {
+      const { port } = server.address() as AddressInfo;
+      httpGet({ port, path }, response => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk: string) => (body += chunk));
+        response.on('error', () => undefined);
+        response.on('close', () => {
+          server.close();
+          resolve({ statusCode: response.statusCode, body, complete: response.complete });
+        });
+      }).on('error', reject);
+    });
+  });
+}
