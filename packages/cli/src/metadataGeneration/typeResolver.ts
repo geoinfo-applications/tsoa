@@ -289,7 +289,7 @@ export class TypeResolver {
               dataType: 'union',
               types: indexTypes,
             };
-          } else if (objectLiteral.properties.length === 0 && mappedTypeNode.type !== undefined) {
+          } else if (indexInfos.length === 0 && objectLiteral.properties.length === 0 && mappedTypeNode.type !== undefined) {
             // fallback for mapped types like Record<string, V>
             const constraintNode = mappedTypeNode.typeParameter.constraint;
 
