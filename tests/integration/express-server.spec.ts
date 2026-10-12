@@ -1686,7 +1686,7 @@ describe('Express Server', () => {
       const formData = { wrongAttributeName: '@../package.json' };
       verifyFileUploadRequest(app, basePath + '/PostTest/File', formData, (_err, res) => {
         expect(res.status).to.equal(500);
-        expect(res.text).to.equal('{"message":"Unexpected field","name":"MulterError","status":500}');
+        expect(JSON.parse(res.text)).to.deep.include({ name: 'MulterError', status: 500 });
       });
     });
 

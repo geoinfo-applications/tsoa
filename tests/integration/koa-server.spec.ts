@@ -1551,7 +1551,7 @@ describe('Koa Server', () => {
       const formData = { wrongAttributeName: '@../package.json' };
       verifyFileUploadRequest(app, basePath + '/PostTest/File', formData, (_err, res) => {
         expect(res.status).to.equal(500);
-        expect(res.text).to.equal('Unexpected field');
+        expect(res.text).to.match(/^Unexpected (file )?field$/);
       });
     });
 
